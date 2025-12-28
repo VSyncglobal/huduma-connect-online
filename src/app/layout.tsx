@@ -3,6 +3,8 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { ShinyFooter } from "@/components/layout/ShinyFooter";
+import { LoginModal } from "@/components/auth/LoginModal"; // <--- FIXED: Points to your existing file
+import { Toaster } from 'react-hot-toast';
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -19,15 +21,34 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} font-sans bg-silver-100 text-huduma-charcoal antialiased selection:bg-gray-300`}>
-        {/* Fixed Header is always present */}
-        <Header />
+        {/* Toast Notifications Configuration */}
+        <Toaster 
+          position="bottom-right"
+          toastOptions={{
+            style: {
+              background: '#000',
+              color: '#fff',
+              border: '1px solid #333',
+              borderRadius: '12px',
+              fontSize: '14px',
+              padding: '16px',
+            },
+            success: {
+              iconTheme: { primary: '#22c55e', secondary: 'black' },
+            },
+            error: {
+              iconTheme: { primary: '#ef4444', secondary: 'black' },
+            },
+          }}
+        />
+
+        {/* Global Modal */}
+        <LoginModal /> 
         
-        {/* Main Content Area */}
+        <Header />
         <main className="min-h-screen">
           {children}
         </main>
-
-        {/* Global Footer */}
         <ShinyFooter />
       </body>
     </html>

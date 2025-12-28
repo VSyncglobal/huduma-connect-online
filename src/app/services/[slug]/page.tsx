@@ -34,9 +34,12 @@ export default function ServiceApplicationPage() {
   const [loadingService, setLoadingService] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Form State
+  // Form State - Added idNumber here/page.tsx]
   const [applicantBasic, setApplicantBasic] = useState({
-    fullName: '', phoneNumber: '', email: '' 
+    fullName: '', 
+    phoneNumber: '', 
+    email: '',
+    idNumber: '' // <--- ADDED: Required by Database
   });
   const [customData, setCustomData] = useState<Record<string, any>>({});
   const [uploadingField, setUploadingField] = useState<string | null>(null);
@@ -74,7 +77,6 @@ export default function ServiceApplicationPage() {
                formFields: found.formFields || []
              });
           } else {
-            // Not found anywhere
             toast.error("Service not found");
             router.push('/');
           }
@@ -137,9 +139,11 @@ export default function ServiceApplicationPage() {
       return; 
     }
 
-    if (!applicantBasic.phoneNumber) { toast.error("Phone number is required for M-Pesa."); return; }
+    // Validation
+    if (!applicantBasic.phoneNumber) { toast.error("Phone number is required."); return; }
+    if (!applicantBasic.idNumber) { toast.error("ID Number is required."); return; } // <--- Added Check
     
-    // Validate Required Fields
+    // Validate Required Dynamic Fields
     for (const field of service?.formFields || []) {
       if (field.required && !customData[field.id]) {
         toast.error(`Please complete: ${field.label}`);
@@ -162,7 +166,7 @@ export default function ServiceApplicationPage() {
           serviceTitle: service?.title,
           price: service?.price,
           applicantData: {
-            ...applicantBasic,
+            ...applicantBasic, // Now includes idNumber
             customFields: customData
           },
           userId: session.user.id, 
@@ -234,7 +238,7 @@ export default function ServiceApplicationPage() {
 
               <div className="space-y-5">
                 {/* Basic Info */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div>
                     <label className="text-[10px] text-gray-400 uppercase font-bold">Full Name</label>
                     <input 
@@ -243,13 +247,26 @@ export default function ServiceApplicationPage() {
                       className="w-full bg-white/10 border border-white/10 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:bg-white/20 text-sm"
                     />
                   </div>
-                  <div>
-                    <label className="text-[10px] text-gray-400 uppercase font-bold">M-Pesa Number</label>
-                    <input 
-                      type="tel" value={applicantBasic.phoneNumber} placeholder="07XX..."
-                      onChange={(e) => setApplicantBasic({...applicantBasic, phoneNumber: e.target.value})}
-                      className="w-full bg-white/10 border border-white/10 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:bg-white/20 text-sm"
-                    />
+                  
+                  {/* Two Column Row for ID and Phone */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] text-gray-400 uppercase font-bold">ID Number <span className="text-red-400">*</span></label>
+                      <input 
+                        type="text" value={applicantBasic.idNumber}
+                        onChange={(e) => setApplicantBasic({...applicantBasic, idNumber: e.target.value})}
+                        className="w-full bg-white/10 border border-white/10 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:bg-white/20 text-sm"
+                        placeholder="Required"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-400 uppercase font-bold">M-Pesa Number <span className="text-red-400">*</span></label>
+                      <input 
+                        type="tel" value={applicantBasic.phoneNumber} placeholder="07XX..."
+                        onChange={(e) => setApplicantBasic({...applicantBasic, phoneNumber: e.target.value})}
+                        className="w-full bg-white/10 border border-white/10 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:bg-white/20 text-sm"
+                      />
+                    </div>
                   </div>
                 </div>
 

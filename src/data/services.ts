@@ -21,6 +21,7 @@ export interface ServiceItem {
   title: string;
   description?: string;
   price: number;
+  serviceFee?: number; // <--- ADDED THIS PROPERTY (Optional)
   requirements: string[];
   turnaround: string;
   formFields: FormField[]; // The Smart Engine Data

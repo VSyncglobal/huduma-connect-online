@@ -42,7 +42,8 @@ export async function GET(request: Request) {
 
     if (error) throw error;
 
-    return NextResponse.json(data);
+    // FIX: Return empty array if data is null to prevent frontend crash
+    return NextResponse.json(data || []); 
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

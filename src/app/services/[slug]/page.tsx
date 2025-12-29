@@ -11,7 +11,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { SERVICE_CATEGORIES } from '@/data/services'; // Fallback only
-import toast from 'react-hot-toast'; // IMPORT TOAST
+import toast from 'react-hot-toast'; 
 
 // Define the shape of our Service data
 interface ServiceItem {
@@ -21,8 +21,9 @@ interface ServiceItem {
   title: string;
   description: string;
   price: number;
+  service_fee?: number; 
   requirements: string[];
-  formFields: any[]; // Mapped from DB 'form_fields'
+  formFields: any[]; 
 }
 
 export default function ServiceApplicationPage() {
@@ -34,17 +35,17 @@ export default function ServiceApplicationPage() {
   const [loadingService, setLoadingService] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Form State - Added idNumber here/page.tsx]
+  // Form State
   const [applicantBasic, setApplicantBasic] = useState({
     fullName: '', 
     phoneNumber: '', 
     email: '',
-    idNumber: '' // <--- ADDED: Required by Database
+    idNumber: '' 
   });
   const [customData, setCustomData] = useState<Record<string, any>>({});
   const [uploadingField, setUploadingField] = useState<string | null>(null);
 
-  // 1. FETCH SERVICE FROM DB (With Static Fallback)
+  // 1. FETCH SERVICE FROM DB
   useEffect(() => {
     const fetchServiceData = async () => {
       if (!params.slug) return;
@@ -61,6 +62,9 @@ export default function ServiceApplicationPage() {
         if (data) {
           setService({
             ...data,
+            // Map 'govt_cost' to 'price' and ensure 'service_fee' is captured
+            price: data.govt_cost || 0,
+            service_fee: data.service_fee, // Use exact value from DB
             formFields: data.form_fields || []
           });
         } else {
@@ -141,7 +145,7 @@ export default function ServiceApplicationPage() {
 
     // Validation
     if (!applicantBasic.phoneNumber) { toast.error("Phone number is required."); return; }
-    if (!applicantBasic.idNumber) { toast.error("ID Number is required."); return; } // <--- Added Check
+    if (!applicantBasic.idNumber) { toast.error("ID Number is required."); return; }
     
     // Validate Required Dynamic Fields
     for (const field of service?.formFields || []) {
@@ -154,6 +158,11 @@ export default function ServiceApplicationPage() {
     setIsSubmitting(true);
     const toastId = toast.loading("Processing Application...");
 
+    // CALCULATE PRECISE TOTAL
+    const govtCost = service?.price || 0;
+    const myFee = service?.service_fee || 0;
+    const finalTotal = govtCost + myFee;
+
     try {
       const response = await fetch('/api/applications/submit', {
         method: 'POST',
@@ -164,9 +173,11 @@ export default function ServiceApplicationPage() {
         body: JSON.stringify({
           serviceId: service?.id,
           serviceTitle: service?.title,
-          price: service?.price,
+          price: govtCost,
+          serviceFee: myFee,
+          totalAmount: finalTotal, // SEND EXACT TOTAL TO BACKEND
           applicantData: {
-            ...applicantBasic, // Now includes idNumber
+            ...applicantBasic,
             customFields: customData
           },
           userId: session.user.id, 
@@ -179,7 +190,6 @@ export default function ServiceApplicationPage() {
       // SUCCESS!
       toast.success(`Application Sent! Check phone (${applicantBasic.phoneNumber}) for PIN.`, { id: toastId, duration: 5000 });
       
-      // REDIRECT TO DASHBOARD
       router.push('/dashboard');
 
     } catch (error: any) {
@@ -327,7 +337,8 @@ export default function ServiceApplicationPage() {
                   {isSubmitting ? <Loader2 className="animate-spin h-5 w-5" /> : (
                     <>
                        <CreditCard className="mr-2 h-5 w-5" />
-                       Pay KES {(service.price + 150).toLocaleString()}
+                       {/* REMOVED HARDCODED 150 DEFAULT. Uses DB value or 0 */}
+                       Pay KES {(service.price + (service.service_fee || 0)).toLocaleString()}
                     </>
                   )}
                 </button>

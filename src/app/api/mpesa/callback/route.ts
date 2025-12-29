@@ -9,21 +9,20 @@ export async function POST(request: Request) {
     const { Body } = payload;
     const stkCallback = Body.stkCallback;
     const resultCode = stkCallback.ResultCode; // 0 = Success, Others = Failed
-    const merchantRequestID = stkCallback.MerchantRequestID;
     const checkoutRequestID = stkCallback.CheckoutRequestID;
     const resultDesc = stkCallback.ResultDesc;
 
     console.log(`M-Pesa Callback Received: ${resultDesc} (${resultCode})`);
 
     // 2. Determine Status
-    // If ResultCode is 0, they paid. Otherwise, they failed/cancelled.
-    const newStatus = resultCode === 0 ? 'processing' : 'payment_failed';
+    // FIX: Used 'rejected' instead of 'payment_failed' to match Database Constraints
+    const newStatus = resultCode === 0 ? 'processing' : 'rejected';
 
-    // 3. Find the Application by the CheckoutRequestID we saved earlier
-    // We use supabaseAdmin to bypass RLS since this is a server-to-server call
+    // 3. Find the Application
+    // FIX: Added 'admin_notes' to selection so we don't overwrite them
     const { data: appData, error: findError } = await supabaseAdmin
       .from('applications')
-      .select('id, custom_fields')
+      .select('id, custom_fields, admin_notes')
       .eq('mpesa_reference', checkoutRequestID)
       .single();
 
@@ -33,23 +32,34 @@ export async function POST(request: Request) {
     }
 
     // 4. Update the Database
-    // We update status and add the M-Pesa receipt to the notes/custom_fields
-    const mpesaReceipt = stkCallback.CallbackMetadata?.Item.find((i: any) => i.Name === 'MpesaReceiptNumber')?.Value;
+    // Extract Receipt if successful
+    const mpesaReceipt = stkCallback.CallbackMetadata?.Item?.find((i: any) => i.Name === 'MpesaReceiptNumber')?.Value;
     
-    const updatePayload: any = { status: newStatus };
-    
+    // FIX: Append to existing notes instead of replacing
+    let currentNotes = appData.admin_notes || '';
+    let systemNote = '';
+
     if (resultCode === 0) {
-      updatePayload.admin_notes = `System: Payment Confirmed. Receipt: ${mpesaReceipt}`;
+      systemNote = `\n[System]: Payment Confirmed. Receipt: ${mpesaReceipt}`;
     } else {
-      updatePayload.admin_notes = `System: Payment Failed. Reason: ${resultDesc}`;
+      systemNote = `\n[System]: Payment Failed/Cancelled. Reason: ${resultDesc}`;
     }
 
+    const updatePayload = { 
+        status: newStatus,
+        admin_notes: currentNotes + systemNote 
+    };
+
+    // 5. Commit Update
     const { error: updateError } = await supabaseAdmin
       .from('applications')
       .update(updatePayload)
       .eq('id', appData.id);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+        console.error("Database Update Failed:", updateError);
+        throw updateError;
+    }
 
     return NextResponse.json({ result: 'Success' });
 

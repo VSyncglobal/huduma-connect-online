@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { initiateSTKPush } from '@/lib/mpesa'; // Ensure this exists from Step 2
+import { initiateSTKPush } from '@/lib/mpesa'; 
+import { supabaseAdmin } from '@/lib/supabase-admin'; // <--- IMPORT ADMIN
 
 export async function POST(request: Request) {
   try {
@@ -11,6 +12,7 @@ export async function POST(request: Request) {
       serviceId, 
       serviceTitle, 
       price, 
+      totalAmount, // Uses the total we calculated in the frontend
       applicantData, 
       userId 
     } = body;
@@ -20,21 +22,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // 2. Setup Authenticated Supabase Client
-    // This allows us to insert as the logged-in user (RLS safe)
+    // 2. Setup Authenticated Client (For INSERTING as User)
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
-        global: {
-          headers: {
-            Authorization: authHeader!,
-          },
-        },
+        global: { headers: { Authorization: authHeader! } },
       }
     );
 
-    // 3. Save Application to Database
+    // Determine final amount
+    const finalAmount = totalAmount || price || 0;
+
+    // 3. Save Application (User Action)
     const { data, error } = await supabase
       .from('applications')
       .insert([
@@ -45,11 +45,11 @@ export async function POST(request: Request) {
           applicant_name: applicantData.fullName,
           applicant_phone: applicantData.phoneNumber,
           applicant_id_number: applicantData.idNumber,
-          price_paid: price,
+          price_paid: finalAmount,
           status: 'pending_payment',
           admin_notes: applicantData.notes || '',
           documents: applicantData.documents || [],
-          custom_fields: applicantData.customFields // Save the whole JSON object // Saves the uploaded file URLs
+          custom_fields: applicantData.customFields 
         }
       ])
       .select()
@@ -60,30 +60,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 4. TRIGGER M-PESA STK PUSH
-    // We attempt payment ONLY if the application saved successfully
+    // 4. TRIGGER M-PESA & SAVE REFERENCE (System Action)
     let mpesaMessage = "Payment skipped (Dev Mode/No Keys)";
     
-    // Only attempt if keys exist in .env (prevents crashes in development)
     if (process.env.MPESA_CONSUMER_KEY) {
       try {
-        const totalAmount = price + 150; // Base Price + Convenience Fee
-        const accountReference = "HUDUMA-" + data.id.slice(0, 5); // Short ref
+        const accountReference = "HUDUMA-" + data.id.slice(0, 5); 
 
+        // A. Trigger STK
         const mpesaRes = await initiateSTKPush(
           applicantData.phoneNumber, 
-          totalAmount, 
+          finalAmount, 
           accountReference
         );
         
         if (mpesaRes.ResponseCode === "0") {
           mpesaMessage = "M-Pesa STK Sent to phone";
           
-          // Optional: Save the CheckoutRequestID to DB for tracking
-          await supabase
+          // B. SAVE REFERENCE USING ADMIN CLIENT (Fixes RLS Issues)
+          // We use supabaseAdmin here to ensure we can update the row regardless of user policies
+          const { error: updateError } = await supabaseAdmin
             .from('applications')
             .update({ mpesa_reference: mpesaRes.CheckoutRequestID })
             .eq('id', data.id);
+
+          if (updateError) {
+             console.error("Failed to save M-Pesa Ref:", updateError);
+          }
 
         } else {
           mpesaMessage = "M-Pesa Failed: " + (mpesaRes.errorMessage || mpesaRes.ResponseDescription);

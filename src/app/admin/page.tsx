@@ -136,6 +136,14 @@ export default function AdminDashboard() {
     try {
       if (activeTab === 'orders') {
         const res = await fetch('/api/admin/applications', { headers });
+        
+        // FIX: Check if the response is actually OK before parsing
+        if (!res.ok) {
+            console.error("Failed to fetch orders:", await res.text());
+            setApplications([]); // Fallback to empty
+            return;
+        }
+
         const data = await res.json();
         
         // DEBUGGING: This helps check if data is actually arriving

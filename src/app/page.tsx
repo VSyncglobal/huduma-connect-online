@@ -1,8 +1,9 @@
+// FILE: src/app/page.tsx
 "use client";
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ArrowRight, ChevronRight, X, MessageSquare, ArrowUpRight, Landmark, Car, GraduationCap, Palette, FileText, CreditCard, Laptop } from 'lucide-react';
+import { Search, ArrowRight, ChevronRight, X, MessageSquare, ArrowUpRight, Landmark, Car, GraduationCap, Palette, FileText, CreditCard, Laptop, ShieldCheck } from 'lucide-react';
 import { SERVICE_CATEGORIES as STATIC_CATEGORIES, ServiceCategory } from '@/data/services'; 
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
@@ -55,13 +56,8 @@ export default function Home() {
             category: service.category,
             title: service.title,
             description: service.description,
-            
-            // --- UPDATED MAPPING ---
-            // 'service_fee' is your saved data (YOUR CUT)
-            // 'govt_cost' is the new official price
             serviceFee: service.service_fee || 0, 
             price: service.govt_cost || 0,        
-            
             requirements: service.requirements || [],
             turnaround: service.turnaround || 'Standard',
             formFields: service.form_fields
@@ -81,7 +77,7 @@ export default function Home() {
     : categories;
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col min-h-screen bg-silver-100">
       
       {/* HERO SECTION */}
       <section className="relative h-[85vh] w-full flex items-center overflow-hidden">
@@ -130,7 +126,7 @@ export default function Home() {
       </section>
 
       {/* SERVICES GRID */}
-      <section id="services" className="py-12 px-6 md:px-12 relative z-10 bg-silver-100">
+      <section id="services" className="py-12 px-6 md:px-12 relative z-10">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8 border-b border-gray-200 pb-6">
             <h2 className="text-3xl font-bold mb-2 text-huduma-black">Service Catalog</h2>
@@ -154,7 +150,7 @@ export default function Home() {
           </div>
 
           {/* CUSTOM REQUEST BANNER */}
-          <div className="mt-8 bg-black rounded-3xl p-8 md:p-12 relative overflow-hidden text-center md:text-left shadow-2xl">
+          <div className="mt-8 bg-black rounded-3xl p-8 md:p-12 relative overflow-hidden text-center md:text-left shadow-2xl mb-12">
             <div className="absolute top-0 right-0 w-64 h-64 bg-gray-800 rounded-full blur-3xl opacity-50 translate-x-1/2 -translate-y-1/2"></div>
             <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
               <div>
@@ -177,6 +173,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      
 
       {/* SERVICE MODAL */}
       <AnimatePresence>
@@ -209,10 +207,8 @@ export default function Home() {
                 
                 <div className="overflow-y-auto p-6 space-y-3">
                   {selectedCategory.items.map((service, i) => {
-                    
-                    // --- COST CALCULATION ---
-                    const govtFee = Number(service.price) || 0; // Govt Cost (From new column)
-                    const platformFee = Number(service.serviceFee) || 0; // Your Saved Data (From old column)
+                    const govtFee = Number(service.price) || 0; 
+                    const platformFee = Number(service.serviceFee) || 0; 
                     const totalFee = govtFee + platformFee;
 
                     return (
@@ -220,8 +216,6 @@ export default function Home() {
                         <div className="flex-grow pr-4">
                           <h3 className="font-bold text-gray-900 group-hover:text-black mb-1">{service.title}</h3>
                           <p className="text-xs text-gray-500 mb-1">{service.description || `Processing time: ${service.turnaround}`}</p>
-                          
-                          {/* INFO BADGE */}
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-[10px] font-medium border border-blue-100">
                              <span>Includes KES {platformFee.toLocaleString()} Service Fee</span>
                           </div>
@@ -255,7 +249,7 @@ export default function Home() {
   );
 }
 
-// Service Card Component
+// Service Card Component (Unchanged)
 const ServiceCard = ({ data, index, onClick }: { data: any, index: number, onClick: () => void }) => {
   const Icon = data.icon;
   return (

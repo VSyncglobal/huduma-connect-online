@@ -1,7 +1,7 @@
 "use client";
 import React from 'react';
 import Link from 'next/link';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, ShieldCheck } from 'lucide-react';
 
 export const ShinyFooter = () => {
   return (
@@ -29,7 +29,6 @@ export const ShinyFooter = () => {
             <ul className="space-y-3 text-sm text-gray-300">
               <li><Link href="/#services" className="hover:text-white transition-colors">Browse Services</Link></li>
               <li><Link href="/dashboard" className="hover:text-white transition-colors">Track Application</Link></li>
-              
             </ul>
           </div>
 
@@ -69,13 +68,27 @@ export const ShinyFooter = () => {
 
         </div>
 
-        {/* Bottom Bar */}
-        <div className="border-t border-gray-900 pt-8 flex flex-col md:flex-row justify-between items-center text-xs text-gray-600">
-          <p>&copy; 2025 Huduma Connect Online Cyber. All rights reserved.</p>
-          <div className="flex gap-4 mt-4 md:mt-0">
-            <span>Privacy Policy</span>
-            <span>Terms of Service</span>
+        {/* Bottom Bar - RESTRUCTURED AS REQUESTED */}
+        <div className="border-t border-gray-900 pt-8 flex flex-col md:flex-row justify-between items-center gap-6">
+          
+          {/* Left: Brand Identity */}
+          <div className="text-gray-500 text-xs text-center md:text-left w-full md:w-auto font-medium tracking-wide">
+            huduma.online
           </div>
+
+          {/* Center: Privacy Policy (The Focus) */}
+          <div className="flex-1 flex justify-center w-full md:w-auto">
+             <Link href="/privacy-policy" className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm group">
+               <ShieldCheck className="h-4 w-4 group-hover:text-green-400 transition-colors" />
+               <span className="underline underline-offset-4">Privacy Policy</span>
+             </Link>
+          </div>
+
+          {/* Right: Copyright */}
+          <div className="text-gray-600 text-xs text-center md:text-right w-full md:w-auto">
+            &copy; {new Date().getFullYear()} All rights reserved.
+          </div>
+          
         </div>
       </div>
     </footer>

@@ -1,3 +1,4 @@
+// FILE: src/app/services/[slug]/page.tsx
 "use client";
 
 import React, { useEffect, useState } from 'react';
@@ -12,6 +13,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { SERVICE_CATEGORIES } from '@/data/services'; // Fallback only
 import toast from 'react-hot-toast'; 
+import { DataPrivacyNotice } from '@/components/ui/privacy-notice'; // NEW IMPORT
 
 // Define the shape of our Service data
 interface ServiceItem {
@@ -330,14 +332,18 @@ export default function ServiceApplicationPage() {
                    <p className="text-sm text-gray-400 italic">No additional details required for this service.</p>
                 )}
 
+                {/* DATA PRIVACY NOTICE INJECTION */}
+                <div className="mt-8 mb-2">
+                  <DataPrivacyNotice />
+                </div>
+
                 <button 
                   onClick={handleSubmit} disabled={isSubmitting}
-                  className="w-full bg-white text-black font-bold py-4 rounded-xl mt-6 hover:bg-gray-200 transition-all flex items-center justify-center"
+                  className="w-full bg-white text-black font-bold py-4 rounded-xl mt-4 hover:bg-gray-200 transition-all flex items-center justify-center"
                 >
                   {isSubmitting ? <Loader2 className="animate-spin h-5 w-5" /> : (
                     <>
                        <CreditCard className="mr-2 h-5 w-5" />
-                       {/* REMOVED HARDCODED 150 DEFAULT. Uses DB value or 0 */}
                        Pay KES {(service.price + (service.service_fee || 0)).toLocaleString()}
                     </>
                   )}

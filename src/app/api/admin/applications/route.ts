@@ -1,76 +1,101 @@
-import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { initiateSTKPush } from '@/lib/mpesa'; 
-import { supabaseAdmin } from '@/lib/supabase-admin'; // <--- MUST IMPORT THIS
+import { NextResponse } from 'next/server';
 
-export async function POST(request: Request) {
+// Initialize Supabase with SERVICE ROLE KEY to bypass RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: Request) {
   try {
-    const body = await request.json();
-    const authHeader = request.headers.get('Authorization'); 
-
-    const { serviceId, serviceTitle, price, totalAmount, applicantData, userId } = body;
-
-    // 1. Save Application (User Action)
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { global: { headers: { Authorization: authHeader! } } }
-    );
-
-    const finalAmount = totalAmount || price || 0;
-
-    const { data, error } = await supabase
+    // 1. Fetch All Applications (Bypassing RLS)
+    // We select '*' to get all columns, plus the joined service title
+    const { data: applications, error } = await supabaseAdmin
       .from('applications')
-      .insert([{
-          user_id: userId,
-          service_id: serviceId,
-          service_title: serviceTitle,
-          applicant_name: applicantData.fullName,
-          applicant_phone: applicantData.phoneNumber,
-          applicant_id_number: applicantData.idNumber,
-          price_paid: finalAmount,
-          status: 'pending_payment',
-          admin_notes: applicantData.notes || '',
-          documents: applicantData.documents || [],
-          custom_fields: applicantData.customFields 
-      }])
-      .select()
-      .single();
+      .select(`
+        *,
+        services (
+          title
+        )
+      `)
+      .order('created_at', { ascending: false });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-    // 2. Trigger M-Pesa & Save Reference (System Action)
-    let mpesaMessage = "Skipped (No Keys)";
-    
-    if (process.env.MPESA_CONSUMER_KEY) {
-      try {
-        const accountRef = "HUDUMA-" + data.id.slice(0, 5); 
-        const mpesaRes = await initiateSTKPush(applicantData.phoneNumber, finalAmount, accountRef);
-        
-        if (mpesaRes.ResponseCode === "0") {
-          mpesaMessage = "STK Sent";
-          
-          // --- VITAL STEP: Use supabaseAdmin to save the reference ---
-          const { error: refError } = await supabaseAdmin
-            .from('applications')
-            .update({ mpesa_reference: mpesaRes.CheckoutRequestID })
-            .eq('id', data.id);
-
-          if (refError) console.error("❌ Failed to save M-Pesa Ref:", refError);
-          else console.log("✅ M-Pesa Ref Saved:", mpesaRes.CheckoutRequestID);
-
-        } else {
-          mpesaMessage = "M-Pesa Failed: " + mpesaRes.ResponseDescription;
-        }
-      } catch (e: any) {
-        console.error("Payment Error:", e);
-        mpesaMessage = "Payment Error: " + e.message;
-      }
+    if (error) {
+      console.error("Supabase Error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, message: mpesaMessage, applicationId: data.id });
+    // 2. Transform Data (The "Smart Map")
+    const formattedApplications = applications.map((app: any) => {
+      
+      // A. Extract Custom Fields (JSON)
+      // Sometimes it's stored in 'applicant_data', sometimes 'custom_fields' column
+      const customFields = app.applicant_data?.customFields || app.custom_fields || {};
 
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+      // B. Extract Documents (Look everywhere)
+      // 1. Check specific 'documents' array column
+      // 2. Check inside customFields for http links
+      const docsFromFields = Object.values(customFields).filter((v: any) => 
+        typeof v === 'string' && v.startsWith('http')
+      );
+      
+      const allDocuments = [
+        ...(Array.isArray(app.documents) ? app.documents : []), // If specific column exists
+        ...docsFromFields
+      ];
+
+      return {
+        id: app.id,
+        service_title: app.services?.title || app.service_title || 'Unknown Service',
+        
+        // --- FIX: CHECK FLAT COLUMNS FIRST, THEN JSON ---
+        applicant_name: app.applicant_name || app.full_name || app.applicant_data?.fullName || 'N/A',
+        applicant_phone: app.applicant_phone || app.phone_number || app.applicant_data?.phoneNumber || 'N/A',
+        applicant_id_number: app.applicant_id_number || app.id_number || app.applicant_data?.idNumber || 'N/A',
+        
+        custom_fields: customFields,
+        
+        // Standard fields
+        status: app.status || 'pending',
+        price_paid: app.total_amount || app.price_paid || 0,
+        created_at: app.created_at,
+        admin_notes: app.admin_notes,
+        
+        // Final Document List
+        documents: allDocuments
+      };
+    });
+
+    return NextResponse.json(formattedApplications);
+
+  } catch (error: any) {
+    console.error("API Error:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+
+// HANDLE STATUS UPDATES (PATCH) - No changes needed here, but included for completeness
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, status, notes } = body;
+
+    const updateData: any = {};
+    if (status) updateData.status = status;
+    if (notes !== undefined) updateData.admin_notes = notes;
+
+    const { error } = await supabaseAdmin
+      .from('applications')
+      .update(updateData)
+      .eq('id', id);
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: "Update Failed" }, { status: 500 });
   }
 }

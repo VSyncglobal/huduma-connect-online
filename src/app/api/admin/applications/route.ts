@@ -1,84 +1,76 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase-admin';
 import { createClient } from '@supabase/supabase-js';
+import { initiateSTKPush } from '@/lib/mpesa'; 
+import { supabaseAdmin } from '@/lib/supabase-admin'; // <--- MUST IMPORT THIS
 
-// Helper to verify if the requester is an admin
-async function checkAdminAuth(request: Request) {
-  const authHeader = request.headers.get('Authorization');
-  
-  if (!authHeader) return null;
-
-  // 1. Verify the user's token using the standard client
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-  
-  const { data: { user }, error } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
-
-  if (error || !user || !user.email) return null;
-
-  // 2. Check if their email is in the allowed list
-  const allowedAdmins = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',');
-  if (!allowedAdmins.includes(user.email)) return null;
-
-  return user;
-}
-
-// 1. SECURE FETCH ALL
-export async function GET(request: Request) {
+export async function POST(request: Request) {
   try {
-    // Security Check
-    const adminUser = await checkAdminAuth(request);
-    if (!adminUser) {
-      return NextResponse.json({ error: 'Unauthorized Access' }, { status: 401 });
-    }
-
-    // If passed, use Super Admin powers
-    const { data, error } = await supabaseAdmin
-      .from('applications')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    // FIX: Return empty array if data is null to prevent frontend crash
-    return NextResponse.json(data || []); 
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-// 2. SECURE UPDATE STATUS
-export async function PATCH(request: Request) {
-  try {
-    // Security Check
-    const adminUser = await checkAdminAuth(request);
-    if (!adminUser) {
-      return NextResponse.json({ error: 'Unauthorized Access' }, { status: 401 });
-    }
-
     const body = await request.json();
-    const { id, status, notes } = body;
+    const authHeader = request.headers.get('Authorization'); 
 
-    if (!id || !status) {
-      return NextResponse.json({ error: 'Missing ID or Status' }, { status: 400 });
-    }
+    const { serviceId, serviceTitle, price, totalAmount, applicantData, userId } = body;
 
-    const { data, error } = await supabaseAdmin
+    // 1. Save Application (User Action)
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { global: { headers: { Authorization: authHeader! } } }
+    );
+
+    const finalAmount = totalAmount || price || 0;
+
+    const { data, error } = await supabase
       .from('applications')
-      .update({ 
-        status: status,
-        admin_notes: notes 
-      })
-      .eq('id', id)
+      .insert([{
+          user_id: userId,
+          service_id: serviceId,
+          service_title: serviceTitle,
+          applicant_name: applicantData.fullName,
+          applicant_phone: applicantData.phoneNumber,
+          applicant_id_number: applicantData.idNumber,
+          price_paid: finalAmount,
+          status: 'pending_payment',
+          admin_notes: applicantData.notes || '',
+          documents: applicantData.documents || [],
+          custom_fields: applicantData.customFields 
+      }])
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    return NextResponse.json({ success: true, data });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // 2. Trigger M-Pesa & Save Reference (System Action)
+    let mpesaMessage = "Skipped (No Keys)";
+    
+    if (process.env.MPESA_CONSUMER_KEY) {
+      try {
+        const accountRef = "HUDUMA-" + data.id.slice(0, 5); 
+        const mpesaRes = await initiateSTKPush(applicantData.phoneNumber, finalAmount, accountRef);
+        
+        if (mpesaRes.ResponseCode === "0") {
+          mpesaMessage = "STK Sent";
+          
+          // --- VITAL STEP: Use supabaseAdmin to save the reference ---
+          const { error: refError } = await supabaseAdmin
+            .from('applications')
+            .update({ mpesa_reference: mpesaRes.CheckoutRequestID })
+            .eq('id', data.id);
+
+          if (refError) console.error("❌ Failed to save M-Pesa Ref:", refError);
+          else console.log("✅ M-Pesa Ref Saved:", mpesaRes.CheckoutRequestID);
+
+        } else {
+          mpesaMessage = "M-Pesa Failed: " + mpesaRes.ResponseDescription;
+        }
+      } catch (e: any) {
+        console.error("Payment Error:", e);
+        mpesaMessage = "Payment Error: " + e.message;
+      }
+    }
+
+    return NextResponse.json({ success: true, message: mpesaMessage, applicationId: data.id });
+
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

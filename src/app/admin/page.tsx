@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { 
   Search, Plus, Edit2, X, Save, Loader2, FileText, 
-  ExternalLink, Eye, Trash2, GripVertical
+  ExternalLink, Eye, Trash2, GripVertical, Calculator
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -32,7 +32,7 @@ interface FormField {
   type: 'text' | 'number' | 'date' | 'file' | 'textarea' | 'select';
   required: boolean;
   helperText?: string;
-  options?: string[]; // For select dropdowns
+  options?: string[];
 }
 
 interface Service {
@@ -41,7 +41,8 @@ interface Service {
   category: string;
   title: string;
   description: string;
-  price: number;
+  govt_cost: number;   // NEW: Official Government Charge
+  service_fee: number; // NEW: Your Platform Fee
   form_fields: FormField[];
 }
 
@@ -136,13 +137,23 @@ export default function AdminDashboard() {
       if (activeTab === 'orders') {
         const res = await fetch('/api/admin/applications', { headers });
         const data = await res.json();
-        if (Array.isArray(data)) setApplications(data);
+        
+        // DEBUGGING: This helps check if data is actually arriving
+        console.log("Fetched Orders:", data);
+
+        if (Array.isArray(data)) {
+            setApplications(data);
+        } else {
+            console.error("Orders data is not an array", data);
+            setApplications([]);
+        }
       } else {
         const res = await fetch('/api/admin/services', { headers });
         const data = await res.json();
         if (Array.isArray(data)) setServices(data);
       }
     } catch (e) {
+      console.error(e);
       toast.error("Failed to load data");
     } finally {
       setLoading(false);
@@ -209,7 +220,10 @@ export default function AdminDashboard() {
     const payload = {
       ...editingService,
       slug: editingService.slug || editingService.title?.toLowerCase().replace(/ /g, '-'),
-      form_fields: editingService.form_fields || []
+      form_fields: editingService.form_fields || [],
+      // Ensure we send numbers
+      govt_cost: Number(editingService.govt_cost) || 0,
+      service_fee: Number(editingService.service_fee) || 0
     };
 
     try {
@@ -228,21 +242,22 @@ export default function AdminDashboard() {
     }
   };
 
-  const handlePriceUpdate = async (service: Service, newPrice: number) => {
-    setServices(prev => prev.map(s => s.id === service.id ? { ...s, price: newPrice } : s));
+  // Quick edit for Service Fee (Profit) only
+  const handleFeeUpdate = async (service: Service, newFee: number) => {
+    setServices(prev => prev.map(s => s.id === service.id ? { ...s, service_fee: newFee } : s));
   };
 
-  const saveQuickPrice = async (service: Service) => {
+  const saveQuickFee = async (service: Service) => {
     const { data: { session } } = await supabase.auth.getSession();
     try {
       await fetch('/api/admin/services', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ id: service.id, price: service.price })
+        body: JSON.stringify({ id: service.id, service_fee: service.service_fee })
       });
-      toast.success("Price updated");
+      toast.success("Service Fee Updated");
     } catch (e) {
-      toast.error("Failed to update price");
+      toast.error("Failed to update fee");
     }
   };
 
@@ -268,7 +283,6 @@ export default function AdminDashboard() {
     setEditingService((prev: any) => {
       const newFields = [...prev.form_fields];
       newFields[index] = { ...newFields[index], [key]: value };
-      // Also update ID based on label for cleaner data
       if (key === 'label') {
         newFields[index].id = value.toLowerCase().replace(/ /g, '_').replace(/[^a-z0-9_]/g, '');
       }
@@ -301,7 +315,7 @@ export default function AdminDashboard() {
           </div>
           {activeTab === 'services' && (
             <button 
-              onClick={() => setEditingService({ category: 'General', price: 1000, form_fields: [] })}
+              onClick={() => setEditingService({ category: 'General', govt_cost: 0, service_fee: 150, form_fields: [] })}
               className="bg-black text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center hover:bg-gray-800 transition-colors"
             >
               <Plus className="h-4 w-4 mr-2" /> Add Service
@@ -317,7 +331,7 @@ export default function AdminDashboard() {
           <>
             {/* === ORDERS VIEW === */}
             {activeTab === 'orders' && (
-              <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden min-h-[200px]">
                 <table className="w-full text-left">
                   <thead className="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-100">
                     <tr>
@@ -325,25 +339,34 @@ export default function AdminDashboard() {
                       <th className="px-6 py-4">Service</th>
                       <th className="px-6 py-4">Applicant</th>
                       <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4">Fee</th>
+                      <th className="px-6 py-4">Total Paid</th>
                       <th className="px-6 py-4 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {applications.map(app => (
-                      <tr key={app.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 text-xs font-mono text-gray-500">#{app.id.slice(0,8)}</td>
-                        <td className="px-6 py-4 font-medium">{app.service_title}</td>
-                        <td className="px-6 py-4 text-sm">{app.applicant_name}<br/><span className="text-gray-400 text-xs">{app.applicant_phone}</span></td>
-                        <td className="px-6 py-4"><span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${getStatusColor(app.status)}`}>{app.status}</span></td>
-                        <td className="px-6 py-4 text-sm font-bold">
-                          {app.price_paid === 0 ? <span className="text-gray-400 text-[10px]">QUOTE PENDING</span> : `KES ${app.price_paid.toLocaleString()}`}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <button onClick={() => openAppDetails(app)} className="text-blue-600 font-bold text-xs hover:underline">Manage</button>
-                        </td>
-                      </tr>
-                    ))}
+                    {applications.length === 0 ? (
+                        <tr>
+                            <td colSpan={6} className="px-6 py-10 text-center text-gray-400 italic">
+                                No orders found.
+                            </td>
+                        </tr>
+                    ) : (
+                        applications.map(app => (
+                        <tr key={app.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-6 py-4 text-xs font-mono text-gray-500">#{app.id.slice(0,8)}</td>
+                            <td className="px-6 py-4 font-medium">{app.service_title}</td>
+                            <td className="px-6 py-4 text-sm">{app.applicant_name}<br/><span className="text-gray-400 text-xs">{app.applicant_phone}</span></td>
+                            <td className="px-6 py-4"><span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${getStatusColor(app.status)}`}>{app.status}</span></td>
+                            <td className="px-6 py-4 text-sm font-bold">
+                            {/* FIXED: Added safety check (app.price_paid || 0) to prevent crash on null */}
+                            {app.price_paid === 0 ? <span className="text-gray-400 text-[10px]">QUOTE PENDING</span> : `KES ${(app.price_paid || 0).toLocaleString()}`}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                            <button onClick={() => openAppDetails(app)} className="text-blue-600 font-bold text-xs hover:underline">Manage</button>
+                            </td>
+                        </tr>
+                        ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -352,35 +375,50 @@ export default function AdminDashboard() {
             {/* === SERVICES VIEW === */}
             {activeTab === 'services' && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {services.map(svc => (
-                  <div key={svc.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm group hover:border-black transition-all">
-                    <div className="flex justify-between items-start mb-4">
-                      <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">{svc.category}</span>
-                      <button onClick={() => setEditingService(svc)} className="text-gray-400 hover:text-black transition-colors">
-                        <Edit2 className="h-4 w-4" />
-                      </button>
+                {services.map(svc => {
+                  const total = (svc.govt_cost || 0) + (svc.service_fee || 0);
+                  return (
+                    <div key={svc.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm group hover:border-black transition-all">
+                      <div className="flex justify-between items-start mb-4">
+                        <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">{svc.category}</span>
+                        <button onClick={() => setEditingService(svc)} className="text-gray-400 hover:text-black transition-colors">
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <h3 className="font-bold text-lg mb-1">{svc.title}</h3>
+                      <p className="text-sm text-gray-500 mb-4 line-clamp-2">{svc.description}</p>
+                      
+                      <div className="mt-auto border-t border-gray-100 pt-3">
+                        <div className="flex justify-between items-end mb-2">
+                            <span className="text-xs text-gray-400">Total Customer Price:</span>
+                            <span className="font-bold text-black">KES {total.toLocaleString()}</span>
+                        </div>
+                        
+                        {/* Quick Service Fee Editor */}
+                        <div className="bg-gray-50 p-2 rounded-lg flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase text-gray-500">My Fee</span>
+                          <div className="flex items-center gap-2">
+                             <input 
+                              type="number" 
+                              value={svc.service_fee}
+                              onChange={(e) => handleFeeUpdate(svc, parseInt(e.target.value))}
+                              className="w-20 border border-gray-200 rounded px-2 py-1 text-xs font-bold focus:outline-none focus:border-black text-right"
+                            />
+                            <button 
+                              onClick={() => saveQuickFee(svc)}
+                              className="text-[10px] bg-black text-white px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-gray-400 text-right mt-1">
+                            Govt Cost: KES {svc.govt_cost?.toLocaleString() || 0}
+                        </div>
+                      </div>
                     </div>
-                    <h3 className="font-bold text-lg mb-1">{svc.title}</h3>
-                    <p className="text-sm text-gray-500 mb-4 line-clamp-2">{svc.description}</p>
-                    
-                    {/* Quick Price Editor */}
-                    <div className="flex items-center gap-2 mt-auto pt-4 border-t border-gray-100">
-                      <span className="text-xs font-bold text-gray-400">KES</span>
-                      <input 
-                        type="number" 
-                        value={svc.price}
-                        onChange={(e) => handlePriceUpdate(svc, parseInt(e.target.value))}
-                        className="w-24 border border-gray-200 rounded px-2 py-1 text-sm font-bold focus:outline-none focus:border-black transition-all"
-                      />
-                      <button 
-                        onClick={() => saveQuickPrice(svc)}
-                        className="text-xs bg-black text-white px-3 py-1.5 rounded ml-auto hover:bg-gray-800 transition-colors"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>
@@ -403,16 +441,48 @@ export default function AdminDashboard() {
                   <label className="text-xs font-bold uppercase text-gray-500">Service Title</label>
                   <input className="w-full border p-2 rounded-lg" value={editingService.title || ''} onChange={e => setEditingService({...editingService, title: e.target.value})} />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                <div>
                     <label className="text-xs font-bold uppercase text-gray-500">Category</label>
                     <input className="w-full border p-2 rounded-lg" value={editingService.category || ''} onChange={e => setEditingService({...editingService, category: e.target.value})} />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold uppercase text-gray-500">Price (KES)</label>
-                    <input type="number" className="w-full border p-2 rounded-lg" value={editingService.price || 0} onChange={e => setEditingService({...editingService, price: parseInt(e.target.value)})} />
-                  </div>
                 </div>
+                
+                {/* PRICING SPLIT */}
+                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                    <div className="flex items-center gap-2 mb-3">
+                        <Calculator className="h-4 w-4 text-blue-600" />
+                        <h3 className="text-sm font-bold text-blue-900">Price Configuration</h3>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                        <div>
+                            <label className="text-[10px] font-bold uppercase text-gray-500">Govt Official Cost</label>
+                            <input 
+                                type="number" 
+                                className="w-full border border-gray-300 p-2 rounded-lg bg-white" 
+                                value={editingService.govt_cost || 0} 
+                                onChange={e => setEditingService({...editingService, govt_cost: parseInt(e.target.value) || 0})} 
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold uppercase text-gray-500">My Service Fee</label>
+                            <input 
+                                type="number" 
+                                className="w-full border border-gray-300 p-2 rounded-lg bg-white font-bold text-black" 
+                                value={editingService.service_fee || 0} 
+                                onChange={e => setEditingService({...editingService, service_fee: parseInt(e.target.value) || 0})} 
+                            />
+                        </div>
+                         <div>
+                            <label className="text-[10px] font-bold uppercase text-gray-400">Total Customer Price</label>
+                            <div className="w-full bg-gray-200 border border-gray-200 p-2 rounded-lg text-gray-500 font-bold">
+                                KES {((editingService.govt_cost || 0) + (editingService.service_fee || 0)).toLocaleString()}
+                            </div>
+                        </div>
+                    </div>
+                    <p className="text-[10px] text-blue-600 mt-2">
+                        * The customer will see the Total Price. The breakdown is shown on details.
+                    </p>
+                </div>
+
                 <div>
                   <label className="text-xs font-bold uppercase text-gray-500">Description</label>
                   <textarea className="w-full border p-2 rounded-lg h-20" value={editingService.description || ''} onChange={e => setEditingService({...editingService, description: e.target.value})} />

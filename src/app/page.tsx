@@ -48,13 +48,20 @@ export default function Home() {
               items: []
             };
           }
+          
           grouped[catName].items.push({
             id: service.id,
             slug: service.slug,
             category: service.category,
             title: service.title,
             description: service.description,
-            price: service.price,
+            
+            // --- UPDATED MAPPING ---
+            // 'service_fee' is your saved data (YOUR CUT)
+            // 'govt_cost' is the new official price
+            serviceFee: service.service_fee || 0, 
+            price: service.govt_cost || 0,        
+            
             requirements: service.requirements || [],
             turnaround: service.turnaround || 'Standard',
             formFields: service.form_fields
@@ -76,23 +83,19 @@ export default function Home() {
   return (
     <div className="flex flex-col">
       
-      {/* --- NEW HERO SECTION --- */}
+      {/* HERO SECTION */}
       <section className="relative h-[85vh] w-full flex items-center overflow-hidden">
-        
-        {/* 1. Background Image */}
         <div 
           className="absolute inset-0 z-0"
           style={{
-            backgroundImage: "url('/images/hero-bg.jpg')", // Ensure this file exists in public/images/
+            backgroundImage: "url('/images/hero-bg.jpg')", 
             backgroundSize: 'cover',
             backgroundPosition: 'center',
           }}
         >
-          {/* 2. Dark Overlay (Adjust opacity 0.6 as needed) */}
           <div className="absolute inset-0 bg-black/60" />
         </div>
 
-        {/* 3. Left-Aligned Content */}
         <div className="relative z-10 container mx-auto px-6 md:px-12 pt-20">
           <motion.div 
             initial={{ opacity: 0, x: -50 }}
@@ -106,12 +109,10 @@ export default function Home() {
                 Simplified
               </span>
             </h1>
-            
             <p className="text-lg md:text-xl text-gray-300 mb-10 leading-relaxed max-w-xl">
               Access eCitizen, KRA, NTSA, and professional document services in one secure, automated platform.
             </p>
-
-            {/* Search Bar */}
+            
             <div className="relative w-full max-w-lg">
               <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                 <Search className="h-5 w-5 text-gray-500" />
@@ -128,10 +129,10 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SERVICE GRID SECTION */}
-      <section id="services" className="py-24 px-6 md:px-12 relative z-10 bg-silver-100">
+      {/* SERVICES GRID */}
+      <section id="services" className="py-12 px-6 md:px-12 relative z-10 bg-silver-100">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-16 border-b border-gray-200 pb-6">
+          <div className="mb-8 border-b border-gray-200 pb-6">
             <h2 className="text-3xl font-bold mb-2 text-huduma-black">Service Catalog</h2>
             <p className="text-gray-500">Select a category to view available services.</p>
           </div>
@@ -145,7 +146,6 @@ export default function Home() {
                 onClick={() => setSelectedCategory(category)} 
               />
             ))}
-            
             {filteredCategories.length === 0 && (
                <div className="col-span-full text-center py-20 text-gray-400">
                  No services found matching "{searchQuery}". Try a different term.
@@ -175,11 +175,10 @@ export default function Home() {
               </Link>
             </div>
           </div>
-
         </div>
       </section>
 
-      {/* --- SERVICE SELECTION MODAL --- */}
+      {/* SERVICE MODAL */}
       <AnimatePresence>
         {selectedCategory && (
           <>
@@ -207,15 +206,44 @@ export default function Home() {
                    </div>
                    <button onClick={() => setSelectedCategory(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="h-5 w-5 text-gray-400" /></button>
                 </div>
+                
                 <div className="overflow-y-auto p-6 space-y-3">
-                  {selectedCategory.items.map((service, i) => (
-                    <Link key={i} href={`/services/${service.slug || service.id}`} className="group flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:border-black hover:shadow-md transition-all bg-white">
-                      <div><h3 className="font-bold text-gray-900 group-hover:text-black mb-1">{service.title}</h3><p className="text-xs text-gray-500">{service.description || `Processing time: ${service.turnaround}`}</p></div>
-                      <div className="flex items-center gap-4"><span className="text-sm font-bold text-gray-900 bg-gray-100 px-3 py-1 rounded-full group-hover:bg-black group-hover:text-white transition-colors">KES {service.price.toLocaleString()}</span><ArrowUpRight className="h-5 w-5 text-gray-300 group-hover:text-black" /></div>
-                    </Link>
-                  ))}
+                  {selectedCategory.items.map((service, i) => {
+                    
+                    // --- COST CALCULATION ---
+                    const govtFee = Number(service.price) || 0; // Govt Cost (From new column)
+                    const platformFee = Number(service.serviceFee) || 0; // Your Saved Data (From old column)
+                    const totalFee = govtFee + platformFee;
+
+                    return (
+                      <Link key={i} href={`/services/${service.slug || service.id}`} className="group flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:border-black hover:shadow-md transition-all bg-white">
+                        <div className="flex-grow pr-4">
+                          <h3 className="font-bold text-gray-900 group-hover:text-black mb-1">{service.title}</h3>
+                          <p className="text-xs text-gray-500 mb-1">{service.description || `Processing time: ${service.turnaround}`}</p>
+                          
+                          {/* INFO BADGE */}
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 text-[10px] font-medium border border-blue-100">
+                             <span>Includes KES {platformFee.toLocaleString()} Service Fee</span>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-4 text-right min-w-max">
+                          <div className="flex flex-col items-end">
+                             <span className="text-lg font-bold text-gray-900 group-hover:text-black transition-colors">
+                               KES {totalFee.toLocaleString()}
+                             </span>
+                             <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">
+                               Total Cost
+                             </span>
+                          </div>
+                          <ArrowUpRight className="h-5 w-5 text-gray-300 group-hover:text-black" />
+                        </div>
+                      </Link>
+                    );
+                  })}
                   {selectedCategory.items.length === 0 && <div className="text-center py-8 text-gray-400">No services currently available in this category.</div>}
                 </div>
+                
                 <div className="p-4 bg-gray-50 text-center border-t border-gray-100"><button onClick={() => setSelectedCategory(null)} className="text-sm font-bold text-gray-500 hover:text-black">Cancel</button></div>
               </div>
             </motion.div>
